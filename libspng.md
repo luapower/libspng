@@ -30,8 +30,8 @@ The `opt` table has the fields:
 
 The returned image object has the fields:
 
-* `format`, `bottom_up`, `stride`, `data`, `size`, `w`, `h`: image format
-  and dimensions and pixel data compatible with [bitmap].
+* `format`, `w`, `h`, `compressed`, `interlaced`: image native format,
+dimensions and flags.
 
 ### `img:load(opt) -> bmp`
 
