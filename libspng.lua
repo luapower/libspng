@@ -149,16 +149,15 @@ local premultiply_funcs = {
 
 function spng.open(opt)
 
-	local ctx = C.spng_ctx_new(0)
-	assert(ctx ~= nil)
-
 	if type(opt) == 'function' then
 		opt = {read = opt}
 	end
 	local read = assert(opt.read, 'read expected')
 
-	local read_cb
+	local ctx = C.spng_ctx_new(0)
+	assert(ctx ~= nil)
 
+	local read_cb
 	local function free()
 		if read_cb then read_cb:free(); read_cb = nil end
 		if ctx then C.spng_ctx_free(ctx); ctx = nil end
@@ -216,7 +215,7 @@ function spng.open(opt)
 
 	function img:load(opt)
 
-		local gamma = opt and opt.gamma ~= false
+		local gamma = opt and opt.gamma
 		local accept = opt and opt.accept
 		local bmp_fmt, spng_fmt = best_fmt(img.format, accept, gamma, indexed)
 
@@ -270,11 +269,11 @@ function spng.open(opt)
 
 		return bmp
 	end
-	jit.off(img.load, true) --calls back into Lua through a ffi call.
+	jit.off(img.load) --calls back into Lua through a ffi call.
 
 	return img
 end
-jit.off(spng.open, true) --calls back into Lua through a ffi call.
+jit.off(spng.open) --calls back into Lua through a ffi call.
 
 function spng:save(opt)
 

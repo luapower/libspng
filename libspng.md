@@ -19,7 +19,7 @@ A ffi binding of [libspng](https://libspng.org/).
 Open a PNG image and read its header. `opt` is a table containing at least
 the read function and possibly other options.
 
-The read function has the form `read(buf, size) -> readsize`, it can yield
+The read function has the form `read(buf, size) -> readsize`, **it cannot yield**
 and it must signal I/O errors by raising an error. It must accept `nil`
 for `buf` which means skip bytes (i.e. seek). It will only be asked to read
 a positive number of bytes and it can return less bytes than asked,
@@ -27,69 +27,37 @@ including zero which signals EOF.
 
 The `opt` table has the fields:
 
-  * `read`: the read function (required
-  * `read_buffer`: optional, the read buffer to use.
-  * `read_buffer_size`: the read buffer size.
+  * `read`: the read function (required).
 
-* where to read the data from (one of the following):
-	* `path`: read data from a file given its filename
-	* `string`: read data from a string
-	* `cdata`, `size`: read data from a buffer of specified size
-	* `stream`: read data from an opened `FILE *` stream
-	* `read`: read data from a reader function of form:
-		* `read(needed_size) -> cdata, size | string | nil`
-			* `needed_size` is informative, the function can return however
-			many bytes it wants, as long as it returns at least 1 byte.
-* loading options:
-	* `accept`: if present, it is a table specifying conversion options.
-	  libpng implements many of the pixel conversions itself, while other
-	  conversions are supported through [bmpconv bmpconv.convert_best()].
-	  If no `accept` option is given, the image is returned in a normalize
-	  8 bit per channel, top down, palette expanded, 'g', 'rgb', 'rgba' or
-	  'ga' format.
-	* `[pixel_format] = true` - specify one or more accepted pixel formats
-	  (they are all implicitly 8 bit per channel since that is the only
-	  supported bit depth):
-		* 'rgb', 'bgr', 'rgba', 'bgra', 'argb', 'abgr', 'g', 'ga', 'ag'.
-			* if no pixel format is specified, resulted bit depth will not
-			  necessarily be 8 since no conversion will take place.
-	* `[orientation] = true` - specify one or more accepted orientations:
-		* 'top_down', 'bottom_up' (default is 'top_down')
-	* `padded`: true/false (default is false) - specify that the row stride
-	  should be a multiple of 4
-	* `header_only`: do not decompress the image; return only the image header fields.
-	* `sparkle`: true/false (default is false) - alternative render mode
-	  for interlaced images.
-* callbacks:
-	* `warning`: a function to be called as `warning(msg)` on non-fatal errors.
-	* `render_scan`: a function to be called as `render_scan(image,
-	  is_last_scan, scan_number)` for each pass of an interlaced PNG. It can
-	  be used to implement progressive display of images.
-		* also called once for non-interlaced images.
-		* also called on error, as `render_scan(nil, true, scan_number, error)`,
-		  where `scan_number` is the scan number that was supposed to be
-		  rendering next and `error` the error message.
+The returned image object has the fields:
 
-For more info on decoding process and options, read the [libpng doc]
-(have coffee/ibuprofen ready).
+* `format`, `bottom_up`, `stride`, `data`, `size`, `w`, `h`: image format
+  and dimensions and pixel data compatible with [bitmap].
 
-The returned image object is a table with the fields:
+### `img:load(opt) -> bmp`
 
-* `pixel`, `orientation`, `stride`, `data`, `size`, `w`, `h`: image format
-  and dimensions and pixel data.
-* `file.pixel`, `file.paletted`, `file.bit_depth`, `file.interlaced`,
-  `file.w`, `file.h`: format of the original image before conversion.
+The `opt` table has the fields:
 
-## Help needed
+* `accept`: a table with the fields:
+  * `[format] = true` specify one or more accepted formats:
+  `'bgra8', 'rgba8', 'rgba16', 'rgb8', 'g8', 'ga8', 'ga16'`.
+  * `bottom_up`: bottom-up bitmap (false).
+  * `stride_aligned`: align stride to 4 bytes (false).
 
-  * saving API
-  * jit is turned off because we can't call error() from a ffi callback called
-    from C; and yet we must not return control to C on errors.
-	 Is there a way around it?
-  * the read callback cannot yield since it is called from C code. This means
-    coroutine-based socket schedulers are out, so much for progressive loading.
-	 Is there a way around it?
+* `accept`: if present, it is a table specifying conversion options.
+If no `accept` option is given, the image is returned in an 8 bit-per-channel,
+top down, palette expanded, 'g', 'rgb', 'rgba' or 'ga' format.
+* if no pixel format is specified, resulted bit depth will not necessarily
+be 8 since no conversion will take place.
+* `bottom_up`: true for a bottom-up image.
+* `stride_aligned`: true for row stride to be a multiple of 4.
 
+The returned bitmap has the standard [bitmap] fields `format`, `bottom_up`,
+`stride`, `data`, `size`, `w`, `h`.
 
-[libpng lib]:  http://www.libpng.org/pub/png/libpng.html
-[libpng doc]:  http://www.libpng.org/pub/png/libpng-1.2.5-manual.html
+### `spng.save(opt)`
+
+Encode a [bitmap] in PNG format.
+
+The `opt` table has the fields:
+
