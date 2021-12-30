@@ -14,7 +14,7 @@ A ffi binding of [libspng](https://libspng.org/).
 `spng.save(opt)`                     compress a bitmap into a PNG image
 ------------------------------------ -----------------------------------------
 
-### `spng.open(opt | read) -> img`
+### `spng.open(opt) -> img`
 
 Open a PNG image and read its header. `opt` is a table containing at least
 the read function and possibly other options.
