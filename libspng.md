@@ -5,8 +5,6 @@ A ffi binding of [libspng](https://libspng.org/).
 
 ## API
 
-<warn>Work in progress</warn>
-
 ------------------------------------ -----------------------------------------
 `spng.open(opt | read) -> img`       open a PNG image for decoding
 `img:load([opt]) -> bmp`             load the image into a bitmap
