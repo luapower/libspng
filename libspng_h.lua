@@ -304,7 +304,7 @@ typedef struct spng_ctx spng_ctx;
 spng_ctx *spng_ctx_new(int flags);
 void spng_ctx_free(spng_ctx *ctx);
 
-typedef int spng_rw_fn(spng_ctx *ctx, void *user, void *dst_src, size_t length);
+typedef int spng_rw_fn(spng_ctx *ctx, void *user, uint8_t *dst_src, size_t length);
 int spng_set_png_stream(spng_ctx *ctx, spng_rw_fn *rw_func, void *user);
 
 int spng_set_image_limits(spng_ctx *ctx, uint32_t width, uint32_t height);

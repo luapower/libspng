@@ -39,8 +39,8 @@ local conversions = {
 	g2     = g8,
 	g4     = g8,
 	g8     = g8,
-	ga8    = ga8,
 	g16    = g16,
+	ga8    = ga8,
 	ga16   = ga16,
 	rgb8   = rgb8,
 	rgba8  = rgba8,
@@ -177,7 +177,7 @@ function spng.open(opt)
 		if sz == 0 then return -1 end -- SPNG_IO_EOF
 		if sz < len then --partial read
 			len = len - sz
-			buf = ffi.cast(u8p, buf) + sz
+			buf = buf + sz
 			goto again
 		end
 		return 0
@@ -275,10 +275,126 @@ function spng.open(opt)
 end
 jit.off(spng.open) --calls back into Lua through a ffi call.
 
+local function struct_setter(ct, set) --setter for a struct type
+	local ct = ffi.typeof(ct)
+	return function(ctx, v)
+		local s = ct(v)
+		assert(set(ctx, s) == 0)
+	end
+end
+local function prim_setter(ct, set) --setter for a primitive type
+	local ct = ffi.typeof(ct)
+	return function(ctx, v)
+		local s = ct(v)
+		assert(set(ctx, s) == 0)
+	end
+end
+local function list_setter(ct, set) --setter for a list of structs
+	local ct = ffi.typeof(ct)
+	return function(ctx, v)
+		local t = ct(#v, v)
+		assert(set(ctx, t, #v) == 0)
+	end
+end
+local chunk_encoders = {
+	ihdr     = struct_setter('struct spng_ihdr'    , C.spng_set_ihdr),
+	plte     = struct_setter('struct spng_plte'    , C.spng_set_plte),
+	trns     = struct_setter('struct spng_trns'    , C.spng_set_trns),
+	chrm     = struct_setter('struct spng_chrm'    , C.spng_set_chrm),
+	chrm_int = struct_setter('struct spng_chrm_int', C.spng_set_chrm_int),
+	gama     =   prim_setter('double[1]'           , C.spng_set_gama),
+	gama_int =   prim_setter('uint32_t[1]'         , C.spng_set_gama_int),
+	iccp     = struct_setter('struct spng_iccp'    , C.spng_set_iccp),
+	sbit     = struct_setter('struct spng_sbit'    , C.spng_set_sbit),
+	srgb     =   prim_setter('uint8_t[1]'          , C.spng_set_srgb),
+	bkgd     = struct_setter('struct spng_bkgd'    , C.spng_set_bkgd),
+	hist     = struct_setter('struct spng_hist'    , C.spng_set_hist),
+	phys     = struct_setter('struct spng_phys'    , C.spng_set_phys),
+	time     = struct_setter('struct spng_time'    , C.spng_set_time),
+	text     =   list_setter('struct spng_text[?]' , C.spng_set_text),
+	splt     =   list_setter('struct spng_splt[?]' , C.spng_set_splt),
+	offs     = struct_setter('struct spng_offs'    , C.spng_set_offs),
+	exif     = struct_setter('struct spng_exif'    , C.spng_set_exif),
+	unknown  =   list_setter('struct spng_unknown_chunk', C.spng_set_unknown_chunks),
+}
+
+local enc_formats = {
+	g1     = C.SPNG_COLOR_TYPE_GRAYSCALE,
+	g2     = C.SPNG_COLOR_TYPE_GRAYSCALE,
+	g4     = C.SPNG_COLOR_TYPE_GRAYSCALE,
+	g8     = C.SPNG_COLOR_TYPE_GRAYSCALE,
+	g16    = C.SPNG_COLOR_TYPE_GRAYSCALE,
+	ga8    = C.SPNG_COLOR_TYPE_GRAYSCALE_ALPHA,
+	ga16   = C.SPNG_COLOR_TYPE_GRAYSCALE_ALPHA,
+	rgb8   = C.SPNG_COLOR_TYPE_TRUECOLOR,
+	rgba8  = C.SPNG_COLOR_TYPE_TRUECOLOR_ALPHA,
+	rgba16 = C.SPNG_COLOR_TYPE_TRUECOLOR_ALPHA,
+}
+
 function spng:save(opt)
 
-	--
+	local ctx = C.spng_ctx_new(C.SPNG_CTX_ENCODER)
+	assert(ctx ~= nil)
 
+	local write_cb
+	local function free()
+		if write_cb then write_cb:free(); write_cb = nil end
+		if ctx then C.spng_ctx_free(ctx); ctx = nil end
+	end
+
+	local function spng_write(ctx, _, buf, len)
+		len = tonumber(len)
+		::again::
+		local sz = write(buf, len)
+		if not sz then return -2 end --SPNG_IO_ERROR
+		if sz == 0 then return -1 end -- SPNG_IO_EOF
+		if sz < len then --partial write
+			len = len - sz
+			buf = buf + sz
+			goto again
+		end
+		return 0
+	end
+
+	--[[local]] write_cb = ffi.cast(rw_fn_ct, spng_write)
+	local ok, err = check(C.spng_set_png_stream(ctx, write_cb, nil))
+	if not ok then
+		return nil, err
+	end
+
+	local bpc = assert(tonumber(opt.bitmap.format:match'%d+$'))
+	local spng_fmt = enc_formats[opt.bitmap.format]
+	if not spng_fmt then
+		return nil, 'invalid format'
+	end
+	if opt.bitmap.bottom_up then
+		return nil, 'bottom-up bitmap NYI'
+	end
+
+	chunk_encoders.ihdr(ctx, {
+		width      = opt.bitmap.w,
+		height     = opt.bitmap.h,
+		bit_depth  = bpc,
+		color_type = ctype,
+		compression_method = 0,
+		filter_method    = 0,
+		interlace_method = 0,
+	})
+
+	if opt.chunks then
+		for name, v in pairs(chunks) do
+			assert(chunk_encoders[name], 'unknown chunk name')(ctx, v)
+		end
+	end
+
+	local flags = C.SPNG_ENCODE_FINALIZE
+	local ok, err = check(C.spng_encode_image(ctx, bmp.data, bmp.size, C.SPNG_FMT_PNG, flags))
+	if not ok then
+		return nil, err
+	end
+
+	return true
 end
+jit.off(spng.save) --calls back into Lua through a ffi call.
 
 return spng

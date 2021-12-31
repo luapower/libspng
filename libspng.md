@@ -59,6 +59,14 @@ The returned bitmap has the standard [bitmap] fields `format`, `bottom_up`,
 
 ### `spng.save(opt)`
 
-Encode a [bitmap] in PNG format.
+Encode a [bitmap] as PNG. `opt` is a table containing at least the source
+bitmap and an output write function, and possibly other options:
+
+  * `bitmap`: a [bitmap] in an accepted format.
+  * `write`: write data to a sink of the form `write(buf, size)`.
+  * `format`: output format.
+  * `write_buffer_size`: internal buffer size (default is 4096).
+  * `write_buffer`: internal buffer (default is to internally allocate one).
+
 
 The `opt` table has the fields:
