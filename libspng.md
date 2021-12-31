@@ -30,8 +30,8 @@ The `opt` table has the fields:
 
 The returned image object has the fields:
 
-* `format`, `w`, `h`, `compressed`, `interlaced`: image native format,
-dimensions and flags.
+* `format`, `w`, `h`: image native format and dimensions
+* `compressed`, `interlaced`, `indexed`: format flags.
 
 __TIP__: Use `tcp:recvall_read()` from [sock] to read from a TCP socket.
 __TIP__: Use `f:buffered_read()` from [fs] to read from a file.
@@ -41,32 +41,29 @@ __TIP__: Use `f:buffered_read()` from [fs] to read from a file.
 The `opt` table has the fields:
 
 * `accept`: a table with the fields:
-  * `[format] = true` specify one or more accepted formats:
+  * `FORMAT = true` specify one or more accepted formats:
   `'bgra8', 'rgba8', 'rgba16', 'rgb8', 'g8', 'ga8', 'ga16'`.
   * `bottom_up`: bottom-up bitmap (false).
   * `stride_aligned`: align stride to 4 bytes (false).
+* `gamma`: decode and apply gamma (only for RGB(A) output formats; false).
+* `premultiply_alpha`: premultiply the alpha channel (true).
 
-* `accept`: if present, it is a table specifying conversion options.
-If no `accept` option is given, the image is returned in an 8 bit-per-channel,
-top down, palette expanded, 'g', 'rgb', 'rgba' or 'ga' format.
-* if no pixel format is specified, resulted bit depth will not necessarily
-be 8 since no conversion will take place.
-* `bottom_up`: true for a bottom-up image.
-* `stride_aligned`: true for row stride to be a multiple of 4.
+If no `accept` option is given or no conversion is possible, the image
+is returned in the native format, transparency not decoded, gamma not decoded
+palette not expanded. The only way to avoid this from happening is to accept
+a RGB(A) output format (conversion is always possible to those, see [table]).
 
-The returned bitmap has the standard [bitmap] fields `format`, `bottom_up`,
-`stride`, `data`, `size`, `w`, `h`.
+[table]: https://github.com/randy408/libspng/blob/master/docs/decode.md#supported-format-flag-combinations
+
+The returned bitmap has the fields:
+* standard [bitmap] fields `format`, `bottom_up`, `stride`, `data`, `size`, `w`, `h`.
+* `partial`: image wasn't fully read (`read_error` contains the error).
 
 ### `spng.save(opt)`
 
 Encode a [bitmap] as PNG. `opt` is a table containing at least the source
 bitmap and an output write function, and possibly other options:
 
-  * `bitmap`: a [bitmap] in an accepted format.
-  * `write`: write data to a sink of the form `write(buf, size)`.
-  * `format`: output format.
-  * `write_buffer_size`: internal buffer size (default is 4096).
-  * `write_buffer`: internal buffer (default is to internally allocate one).
-
-
-The `opt` table has the fields:
+* `bitmap`: a [bitmap] in an accepted format.
+* `write`: write data to a sink of form `write(buf, size)`.
+* `chunks`: list of PNG chunks to encode.

@@ -69,7 +69,7 @@ local dest_formats_gamma = {
 	rgb8   = C.SPNG_FMT_RGB8,
 }
 
-local function best_fmt(raw_fmt, accept, gamma, indexed)
+local function best_fmt(raw_fmt, accept, gamma)
 	local dest_formats = gamma and dest_formats_gamma or dest_formats_no_gamma
 	if accept and conversions[raw_fmt] then --source format convertible
 		for _,bmp_fmt in ipairs(conversions[raw_fmt]) do
@@ -80,9 +80,6 @@ local function best_fmt(raw_fmt, accept, gamma, indexed)
 				end
 			end
 		end
-	end
-	if indexed then
-		return 'bgra8', C.SPNG_FMT_RGBA8
 	end
 	return raw_fmt, C.SPNG_FMT_PNG
 end
@@ -169,11 +166,12 @@ function spng.open(opt)
 		return nil, ffi.string(C.spng_strerror(ret))
 	end
 
+	local read_err
 	local function spng_read(ctx, _, buf, len)
 		len = tonumber(len)
 		::again::
-		local sz = read(buf, len)
-		if not sz then return -2 end --SPNG_IO_ERROR
+		local sz, err = read(buf, len)
+		if not sz then read_err = err; return -2 end --SPNG_IO_ERROR
 		if sz == 0 then return -1 end -- SPNG_IO_EOF
 		if sz < len then --partial read
 			len = len - sz
@@ -190,19 +188,23 @@ function spng.open(opt)
 	end
 	local ok, err = check(C.spng_decode_chunks(ctx))
 	if not ok then
-		return nil, err
+		return nil, read_err or err
 	end
 
 	local img = {free = free}
 
 	function img:chunk(name)
-		return assert(chunk_decoders[name], 'unknown chunk name')(ctx)
+		local decode = chunk_decoders[name]
+		if not decode then
+			return nil, 'unknown chunk name '..name
+		end
+		return decode(ctx)
 	end
 
 	local ihdr = img:chunk'ihdr'
 	if not ihdr then
 		free()
-		return nil, 'header decoding failed'
+		return nil, 'invalid header'
 	end
 	img.w = ihdr.width
 	img.h = ihdr.height
@@ -210,14 +212,14 @@ function spng.open(opt)
 	img.format = formats[ihdr.color_type]..bpc
 	img.compressed = ihdr.compression_method ~= 0
 	img.interlaced = ihdr.interlace_method ~= C.SPNG_INTERLACE_NONE or nil
-	local indexed = ihdr.color_type == C.SPNG_COLOR_TYPE_INDEXED
+	img.indexed = ihdr.color_type == C.SPNG_COLOR_TYPE_INDEXED
 	ihdr = nil
 
 	function img:load(opt)
 
 		local gamma = opt and opt.gamma
 		local accept = opt and opt.accept
-		local bmp_fmt, spng_fmt = best_fmt(img.format, accept, gamma, indexed)
+		local bmp_fmt, spng_fmt = best_fmt(img.format, accept, gamma)
 
 		local nb = ffi.new'size_t[1]'
 		local ok, err = check(C.spng_decoded_image_size(ctx, spng_fmt, nb))
@@ -246,18 +248,26 @@ function spng.open(opt)
 		local bottom_up = opt and opt.accept and opt.accept.bottom_up
 		bmp.bottom_up = bottom_up
 		local row_sz = bmp.size / bmp.h
+
+		local function check_partial(ret)
+			if ret == 0 then return end
+			bmp.partial = true
+			bmp.read_error = read_err or select(2, check(ret))
+			return true
+		end
 		while true do
-			local ret = C.spng_get_row_info(ctx, row_info)
-			if ret ~= 0 then bmp.partial = true; break end
+			if check_partial(C.spng_get_row_info(ctx, row_info)) then break end
 			local i = row_info.row_num
 			if bottom_up then i = img.h - i - 1 end
 			local row = bmp.data + bmp.stride * i
 			local ret = C.spng_decode_row(ctx, row, row_size)
 			if ret == 75 then break end --SPNG_EOI
-			if ret ~= 0 then bmp.partial = true; break end
+			if check_partial(ret) then break end
 		end
 
-		local premultiply_alpha = (not opt or opt.premultiply ~= false)
+		local premultiply_alpha =
+			(not opt or opt.premultiply_alpha ~= false)
+			and (img.format:find('a', 1, true) or img:chunk'trns')
 			and premultiply_funcs[bmp.format]
 		if premultiply_alpha then
 			premultiply_alpha(bmp.data, bmp.size)
@@ -279,21 +289,21 @@ local function struct_setter(ct, set) --setter for a struct type
 	local ct = ffi.typeof(ct)
 	return function(ctx, v)
 		local s = ct(v)
-		assert(set(ctx, s) == 0)
+		return set(ctx, s) == 0
 	end
 end
 local function prim_setter(ct, set) --setter for a primitive type
 	local ct = ffi.typeof(ct)
 	return function(ctx, v)
 		local s = ct(v)
-		assert(set(ctx, s) == 0)
+		return set(ctx, s) == 0
 	end
 end
 local function list_setter(ct, set) --setter for a list of structs
 	local ct = ffi.typeof(ct)
 	return function(ctx, v)
 		local t = ct(#v, v)
-		assert(set(ctx, t, #v) == 0)
+		return set(ctx, t, #v) == 0
 	end
 end
 local chunk_encoders = {
@@ -328,10 +338,17 @@ local enc_formats = {
 	ga16   = C.SPNG_COLOR_TYPE_GRAYSCALE_ALPHA,
 	rgb8   = C.SPNG_COLOR_TYPE_TRUECOLOR,
 	rgba8  = C.SPNG_COLOR_TYPE_TRUECOLOR_ALPHA,
+	bgra8  = C.SPNG_COLOR_TYPE_TRUECOLOR_ALPHA,
 	rgba16 = C.SPNG_COLOR_TYPE_TRUECOLOR_ALPHA,
 }
 
-function spng:save(opt)
+function spng.save(opt)
+
+	local bmp = assert(opt and opt.bitmap, 'bitmap expected')
+	local write = assert(opt and opt.write, 'write expected')
+	if bmp.bottom_up then
+		return nil, 'bottom-up bitmap NYI'
+	end
 
 	local ctx = C.spng_ctx_new(C.SPNG_CTX_ENCODER)
 	assert(ctx ~= nil)
@@ -342,17 +359,17 @@ function spng:save(opt)
 		if ctx then C.spng_ctx_free(ctx); ctx = nil end
 	end
 
+	local function check(ret)
+		if ret == 0 then return true end
+		free()
+		return nil, ffi.string(C.spng_strerror(ret))
+	end
+
+	local write_err
 	local function spng_write(ctx, _, buf, len)
 		len = tonumber(len)
-		::again::
-		local sz = write(buf, len)
-		if not sz then return -2 end --SPNG_IO_ERROR
-		if sz == 0 then return -1 end -- SPNG_IO_EOF
-		if sz < len then --partial write
-			len = len - sz
-			buf = buf + sz
-			goto again
-		end
+		local ok, err = write(buf, len)
+		if not ok then write_err = err; return -2 end --SPNG_IO_ERROR
 		return 0
 	end
 
@@ -362,35 +379,41 @@ function spng:save(opt)
 		return nil, err
 	end
 
-	local bpc = assert(tonumber(opt.bitmap.format:match'%d+$'))
-	local spng_fmt = enc_formats[opt.bitmap.format]
-	if not spng_fmt then
-		return nil, 'invalid format'
-	end
-	if opt.bitmap.bottom_up then
-		return nil, 'bottom-up bitmap NYI'
+	local color_type = enc_formats[bmp.format]
+	local bpc = tonumber(bmp.format:match'%d+$')
+	if not color_type or not bpc then
+		return nil, 'invalid format '..bmp.format
 	end
 
-	chunk_encoders.ihdr(ctx, {
-		width      = opt.bitmap.w,
-		height     = opt.bitmap.h,
+	assert(chunk_encoders.ihdr(ctx, {
+		width      = bmp.w,
+		height     = bmp.h,
 		bit_depth  = bpc,
-		color_type = ctype,
+		color_type = color_type,
 		compression_method = 0,
-		filter_method    = 0,
-		interlace_method = 0,
-	})
+		filter_method      = 0,
+		interlace_method   = 0,
+	}))
 
 	if opt.chunks then
 		for name, v in pairs(chunks) do
-			assert(chunk_encoders[name], 'unknown chunk name')(ctx, v)
+			local encode = assert(chunk_encoders[name], 'unknown chunk '..name)
+			assert(encode(ctx, v), 'invalid chunk '..name)
 		end
 	end
 
+	local data = bmp.data
+	if bmp.format == 'bgra8' then
+		data = ffi.new(u8a, bmp.size)
+		ffi.copy(data, bmp.data, bmp.size)
+		C.spng_rgba8_to_bgra8(data, bmp.size)
+	end
+
+	local fmt = C.SPNG_FMT_PNG
 	local flags = C.SPNG_ENCODE_FINALIZE
-	local ok, err = check(C.spng_encode_image(ctx, bmp.data, bmp.size, C.SPNG_FMT_PNG, flags))
+	local ok, err = check(C.spng_encode_image(ctx, data, bmp.size, fmt, flags))
 	if not ok then
-		return nil, err
+		return nil, write_err or err
 	end
 
 	return true
