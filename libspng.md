@@ -6,13 +6,13 @@ A ffi binding of [libspng](https://libspng.org/).
 ## API
 
 ------------------------------------ -----------------------------------------
-`spng.open(opt | read) -> img`       open a PNG image for decoding
-`img:load([opt]) -> bmp`             load the image into a bitmap
-`img:free()`                         free the image
+`spng.open(opt | read) -> png`       open a PNG image for decoding
+`png:load([opt]) -> bmp`             load the image into a bitmap
+`png:free()`                         free the image
 `spng.save(opt)`                     encode a bitmap into a PNG image
 ------------------------------------ -----------------------------------------
 
-### `spng.open(opt) -> img`
+### `spng.open(opt) -> png`
 
 Open a PNG image and read its header. `opt` is a table containing at least
 the read function and possibly other options.
@@ -26,7 +26,8 @@ The `opt` table has the fields:
 
   * `read`: the read function (required).
 
-The returned image object has the fields:
+The returned `png` object contains information about the file and can be used
+to load/decode the actual image. Its fields are:
 
 * `format`, `w`, `h`: image native format and dimensions
 * `interlaced`, `indexed`: format flags.
@@ -35,7 +36,7 @@ __TIP__: Use `tcp:recvall_read()` from [sock] to read from a TCP socket.
 
 __TIP__: Use `f:buffered_read()` from [fs] to read from a file.
 
-### `img:load(opt) -> bmp`
+### `png:load(opt) -> bmp`
 
 The `opt` table has the fields:
 
