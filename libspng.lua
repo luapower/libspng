@@ -211,7 +211,7 @@ function spng.open(opt)
 	local bpc = ihdr.bit_depth
 	img.format = formats[ihdr.color_type]..bpc
 	img.interlaced = ihdr.interlace_method ~= C.SPNG_INTERLACE_NONE or nil
-	img.indexed = ihdr.color_type == C.SPNG_COLOR_TYPE_INDEXED
+	img.indexed = ihdr.color_type == C.SPNG_COLOR_TYPE_INDEXED or nil
 	ihdr = nil
 
 	function img:load(opt)
