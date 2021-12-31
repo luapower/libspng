@@ -32,6 +32,7 @@ The returned image object has the fields:
 * `interlaced`, `indexed`: format flags.
 
 __TIP__: Use `tcp:recvall_read()` from [sock] to read from a TCP socket.
+
 __TIP__: Use `f:buffered_read()` from [fs] to read from a file.
 
 ### `img:load(opt) -> bmp`
