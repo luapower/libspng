@@ -65,7 +65,8 @@ function testui:repaint()
 		if bmp then
 
 			self:pushgroup'down'
-			self:label(img.format)
+			assert(not img.compressed)
+			self:label(img.format .. (img.compressed and '*' or ''))
 			self:image(bmp)
 			self:label(bmp.format)
 			self:popgroup()

@@ -210,7 +210,6 @@ function spng.open(opt)
 	img.h = ihdr.height
 	local bpc = ihdr.bit_depth
 	img.format = formats[ihdr.color_type]..bpc
-	img.compressed = ihdr.compression_method ~= 0
 	img.interlaced = ihdr.interlace_method ~= C.SPNG_INTERLACE_NONE or nil
 	img.indexed = ihdr.color_type == C.SPNG_COLOR_TYPE_INDEXED
 	ihdr = nil
@@ -328,7 +327,7 @@ local chunk_encoders = {
 	unknown  =   list_setter('struct spng_unknown_chunk', C.spng_set_unknown_chunks),
 }
 
-local enc_formats = {
+local color_types = {
 	g1     = C.SPNG_COLOR_TYPE_GRAYSCALE,
 	g2     = C.SPNG_COLOR_TYPE_GRAYSCALE,
 	g4     = C.SPNG_COLOR_TYPE_GRAYSCALE,
@@ -340,6 +339,10 @@ local enc_formats = {
 	rgba8  = C.SPNG_COLOR_TYPE_TRUECOLOR_ALPHA,
 	bgra8  = C.SPNG_COLOR_TYPE_TRUECOLOR_ALPHA,
 	rgba16 = C.SPNG_COLOR_TYPE_TRUECOLOR_ALPHA,
+	i1     = C.SPNG_COLOR_TYPE_INDEXED,
+	i2     = C.SPNG_COLOR_TYPE_INDEXED,
+	i4     = C.SPNG_COLOR_TYPE_INDEXED,
+	i8     = C.SPNG_COLOR_TYPE_INDEXED,
 }
 
 function spng.save(opt)
@@ -379,7 +382,7 @@ function spng.save(opt)
 		return nil, err
 	end
 
-	local color_type = enc_formats[bmp.format]
+	local color_type = color_types[bmp.format]
 	local bpc = tonumber(bmp.format:match'%d+$')
 	if not color_type or not bpc then
 		return nil, 'invalid format '..bmp.format
